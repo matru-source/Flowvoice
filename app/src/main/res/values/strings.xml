@@ -1,0 +1,42 @@
+<resources>
+    <string name="app_name">FlowVoice</string>
+    <string name="accessibility_service_description">FlowVoice detects text fields across all apps (WhatsApp, Gmail, Slack, etc.) to show your AI Flow Bubble, transcribing Indian languages and Hinglish into polished English.</string>
+
+    <!-- Main Activity UI -->
+    <string name="title_hero">Speak Your Language.\nSend Polished English.</string>
+    <string name="subtitle_hero">Real-time voice-to-text with Hinglish and Indian languages translation directly in any app.</string>
+
+    <string name="section_permissions">Setup &amp; Permissions</string>
+    <string name="perm_overlay_title">Display Over Other Apps</string>
+    <string name="perm_overlay_desc">Allows the floating Flow Bubble to appear on screen.</string>
+    <string name="perm_accessibility_title">Accessibility Service</string>
+    <string name="perm_accessibility_desc">Detects when you tap a text field and inserts polished English text automatically.</string>
+    <string name="perm_mic_title">Microphone Access</string>
+    <string name="perm_mic_desc">Required to record voice dictation.</string>
+
+    <string name="status_enabled">ENABLED</string>
+    <string name="status_action_grant">GRANT</string>
+
+    <string name="section_ai_config">AI Engine Settings</string>
+    <string name="provider_label">Choose AI Provider</string>
+    <string name="api_key_label">API Key</string>
+    <string name="api_key_hint">Enter your API key</string>
+    <string name="btn_save_config">Save Configuration</string>
+
+    <string name="tone_label">Default Writing Tone</string>
+    <string name="tone_natural">Natural &amp; Fluent</string>
+    <string name="tone_professional">Professional / Work</string>
+    <string name="tone_casual">Casual / Chat</string>
+    <string name="tone_concise">Concise &amp; Direct</string>
+
+    <string name="section_test">Live Test Field</string>
+    <string name="test_field_hint">Tap here to test the floating bubble...</string>
+    <string name="btn_test_bubble">Show Floating Bubble Now</string>
+
+    <!-- Floating Bubble UI -->
+    <string name="bubble_listening">Listening...</string>
+    <string name="bubble_polishing">Polishing English...</string>
+    <string name="bubble_ready">Ready</string>
+    <string name="bubble_insert">Insert</string>
+    <string name="bubble_undo">Undo</string>
+</resources>
