@@ -44,6 +44,7 @@ class FlowAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event == null) return
         // Ignore events originating from FlowVoice itself to prevent recursive loops
         if (event.packageName == packageName) return
 
