@@ -1,6 +1,7 @@
 package com.flowvoice.app.network
 
 import android.util.Log
+import com.flowvoice.app.data.ToneVariants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -60,22 +61,27 @@ class GroqClient(private val apiKey: String) {
         }
     }
 
-    suspend fun polishEnglish(rawTranscript: String, tone: String): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun polishAllTones(rawTranscript: String): Result<ToneVariants> = withContext(Dispatchers.IO) {
         try {
             val systemPrompt = """
                 You are an expert voice-to-English communication assistant like Superflow.
-                The user dictates thoughts in Hindi, Tamil, Telugu, Kannada, Malayalam, or Hinglish (code-mixed with colloquialisms and filler words).
+                The user speaks thoughts in Hindi, Tamil, Telugu, Kannada, Malayalam, or Hinglish (code-mixed with colloquialisms and filler words).
                 
-                YOUR GOAL:
-                1. Translate and refine the transcript into natural, fluent, grammatically polished English.
-                2. Selected Tone: $tone.
-                   - If 'Natural & Fluent': Smooth conversational English, retaining exact meaning.
-                   - If 'Professional / Work': Crisp, executive business English (suitable for Slack, Email, LinkedIn).
-                   - If 'Casual / Chat': Friendly, concise messaging style (WhatsApp, DM).
-                   - If 'Concise & Direct': Short, punchy, no unnecessary fluff.
-                3. Remove filler words (matlab, yaani, like, you know, um, toh).
-                4. Fix grammar, tense, and awkward Indian language literal translations.
-                5. Output ONLY the polished English text. Do not enclose in quotes. Do not add explanations.
+                YOUR TASK:
+                Translate and refine the user's speech into THREE different English tones:
+                1. "casual": Friendly, colloquial, relaxed messaging tone (for WhatsApp/DMs, emojis allowed if natural).
+                2. "semi_formal": Natural, polite, fluent everyday English (good for friends and colleagues).
+                3. "formal": Professional, executive business tone (for emails, Slack, clients, managers).
+                
+                RULES:
+                - Remove filler words (matlab, yaani, like, you know, um, toh).
+                - Fix grammar, tense, and awkward Indian language literal translations.
+                - Return ONLY a JSON object with exactly these 3 keys:
+                {
+                  "casual": "...",
+                  "semi_formal": "...",
+                  "formal": "..."
+                }
             """.trimIndent()
 
             val messages = JSONArray().apply {
@@ -87,6 +93,7 @@ class GroqClient(private val apiKey: String) {
                 put("model", "llama-3.3-70b-versatile")
                 put("messages", messages)
                 put("temperature", 0.3)
+                put("response_format", JSONObject().put("type", "json_object"))
                 put("max_tokens", 800)
             }
 
@@ -110,17 +117,38 @@ class GroqClient(private val apiKey: String) {
             val json = JSONObject(bodyString)
             val choices = json.getJSONArray("choices")
             if (choices.length() > 0) {
-                val polishedText = choices.getJSONObject(0)
+                val content = choices.getJSONObject(0)
                     .getJSONObject("message")
                     .getString("content")
                     .trim()
-                Result.success(polishedText)
+
+                val parsed = JSONObject(content)
+                val casual = parsed.optString("casual", rawTranscript)
+                val semiFormal = parsed.optString("semi_formal", casual)
+                val formal = parsed.optString("formal", semiFormal)
+
+                Result.success(ToneVariants(casual = casual, semiFormal = semiFormal, formal = formal))
             } else {
                 Result.failure(Exception("Empty LLM response"))
             }
         } catch (e: Exception) {
             Log.e(TAG, "Groq LLM network error", e)
             Result.failure(e)
+        }
+    }
+
+    suspend fun polishEnglish(rawTranscript: String, tone: String): Result<String> = withContext(Dispatchers.IO) {
+        val result = polishAllTones(rawTranscript)
+        if (result.isSuccess) {
+            val variants = result.getOrNull()!!
+            val text = when {
+                tone.contains("Casual", ignoreCase = true) -> variants.casual
+                tone.contains("Formal", ignoreCase = true) -> variants.formal
+                else -> variants.semiFormal
+            }
+            Result.success(text)
+        } else {
+            Result.failure(result.exceptionOrNull()!!)
         }
     }
 

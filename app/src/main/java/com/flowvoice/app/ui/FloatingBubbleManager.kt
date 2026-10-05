@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.util.DisplayMetrics
@@ -13,14 +15,15 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import com.flowvoice.app.R
 import com.flowvoice.app.audio.AudioRecorderManager
 import com.flowvoice.app.data.PreferencesManager
+import com.flowvoice.app.data.ToneVariants
 import com.flowvoice.app.network.SpeechPolisherEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +42,7 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
     private val audioRecorder = AudioRecorderManager(appContext)
     private val polisherEngine = SpeechPolisherEngine(appContext)
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
+    private val autoStopHandler = Handler(Looper.getMainLooper())
 
     private var bubbleView: View? = null
     private var layoutParams: WindowManager.LayoutParams? = null
@@ -49,8 +53,14 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
     private var layoutProcessing: LinearLayout? = null
     private var layoutPreview: LinearLayout? = null
 
-    private var tvRecordingStatus: TextView? = null
+    // Tone Tabs & Text
+    private var tabCasual: TextView? = null
+    private var tabSemiFormal: TextView? = null
+    private var tabFormal: TextView? = null
     private var tvPreviewText: TextView? = null
+
+    private var currentTones: ToneVariants? = null
+    private var activeToneMode: ToneMode = ToneMode.SEMI_FORMAL
 
     var isBubbleAttached: Boolean = false
         private set
@@ -58,7 +68,10 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
     var onTextReadyListener: ((String) -> Unit)? = null
 
     private var currentRecordedFile: File? = null
-    private var lastPolishedText: String = ""
+
+    enum class ToneMode {
+        CASUAL, SEMI_FORMAL, FORMAL
+    }
 
     @Synchronized
     fun showBubble(callback: ((String) -> Unit)? = null) {
@@ -66,7 +79,7 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
             this.onTextReadyListener = callback
         }
 
-        // If view already attached, ensure visible and return immediately (NEVER add duplicate!)
+        // If view already attached, ensure visible and reset to idle
         if (isBubbleAttached && bubbleView != null) {
             bubbleView?.visibility = View.VISIBLE
             setIdleState()
@@ -77,7 +90,7 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
         bubbleView = inflater.inflate(R.layout.layout_floating_bubble, null)
 
         initViews(bubbleView!!)
-        setupTouchListener(bubbleView!!)
+        setupDragTouchListener(bubbleView!!)
 
         val metrics = DisplayMetrics()
         windowManager.defaultDisplay.getMetrics(metrics)
@@ -119,6 +132,7 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
     fun removeBubble() {
         if (isBubbleAttached && bubbleView != null) {
             try {
+                autoStopHandler.removeCallbacksAndMessages(null)
                 if (audioRecorder.isRecording) {
                     audioRecorder.cancelRecording()
                 }
@@ -138,35 +152,50 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
         layoutProcessing = root.findViewById(R.id.layout_state_processing)
         layoutPreview = root.findViewById(R.id.layout_state_preview)
 
-        tvRecordingStatus = root.findViewById(R.id.tv_recording_status)
+        // Tone tabs
+        tabCasual = root.findViewById(R.id.tab_tone_casual)
+        tabSemiFormal = root.findViewById(R.id.tab_tone_semi_formal)
+        tabFormal = root.findViewById(R.id.tab_tone_formal)
         tvPreviewText = root.findViewById(R.id.tv_preview_text)
 
-        // Idle state click -> start recording
-        layoutIdle?.setOnClickListener {
-            startVoiceCapture()
+        // RECORDING STATE:
+        // 1. Tapping mic indicator icon ALSO stops recording!
+        root.findViewById<ImageView>(R.id.img_recording_indicator)?.setOnClickListener {
+            stopVoiceCapture()
         }
 
-        // Dismiss idle bubble
-        root.findViewById<ImageView>(R.id.btn_close_idle)?.setOnClickListener {
-            hideBubble()
-        }
-
-        // Recording state stop button -> finish and process
+        // 2. Stop square button
         root.findViewById<ImageView>(R.id.btn_stop_recording)?.setOnClickListener {
             stopVoiceCapture()
         }
 
-        // Cancel recording
+        // 3. Cancel / close recording
         root.findViewById<ImageView>(R.id.btn_cancel_recording)?.setOnClickListener {
             cancelVoiceCapture()
         }
 
-        // Preview state actions
-        root.findViewById<Button>(R.id.btn_insert_text)?.setOnClickListener {
-            onTextReadyListener?.invoke(lastPolishedText)
+        // PREVIEW / TONE SELECTION ACTIONS (Image 4):
+        tabCasual?.setOnClickListener {
+            selectTone(ToneMode.CASUAL)
+        }
+
+        tabSemiFormal?.setOnClickListener {
+            selectTone(ToneMode.SEMI_FORMAL)
+        }
+
+        tabFormal?.setOnClickListener {
+            selectTone(ToneMode.FORMAL)
+        }
+
+        // Insert Button (↵)
+        root.findViewById<View>(R.id.btn_insert_text)?.setOnClickListener {
+            val textToInsert = getActiveToneText()
+            onTextReadyListener?.invoke(textToInsert)
+            vibratePhone(40)
             setIdleState()
         }
 
+        // Dismiss Preview Dialog
         root.findViewById<ImageView>(R.id.btn_dismiss_preview)?.setOnClickListener {
             setIdleState()
         }
@@ -180,10 +209,21 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
             setIdleState()
             return
         }
+
         setRecordingState()
+
+        // 40-Second Auto-Timeout: automatically stop if user forgets or sound finishes
+        autoStopHandler.removeCallbacksAndMessages(null)
+        autoStopHandler.postDelayed({
+            if (audioRecorder.isRecording) {
+                Log.d(TAG, "40s timeout reached, automatically stopping recording")
+                stopVoiceCapture()
+            }
+        }, 40_000L)
     }
 
     private fun stopVoiceCapture() {
+        autoStopHandler.removeCallbacksAndMessages(null)
         vibratePhone(40)
         currentRecordedFile = audioRecorder.stopRecording()
         setProcessingState()
@@ -196,20 +236,16 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
         }
 
         coroutineScope.launch {
-            val result = polisherEngine.processAudio(file) { statusMsg ->
+            val result = polisherEngine.processAudioForTones(file) { statusMsg ->
                 // Live status update
             }
 
             if (result.isSuccess) {
-                lastPolishedText = result.getOrNull().orEmpty()
+                currentTones = result.getOrNull()
                 vibratePhone(60)
 
-                if (prefs.autoInsert) {
-                    onTextReadyListener?.invoke(lastPolishedText)
-                    setIdleState()
-                } else {
-                    setPreviewState(lastPolishedText)
-                }
+                // Show Tone Selection Card (Image 4)
+                setPreviewState()
             } else {
                 val error = result.exceptionOrNull()?.message ?: "Processing error"
                 Toast.makeText(appContext, error, Toast.LENGTH_LONG).show()
@@ -219,9 +255,45 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
     }
 
     private fun cancelVoiceCapture() {
+        autoStopHandler.removeCallbacksAndMessages(null)
         vibratePhone(30)
         audioRecorder.cancelRecording()
         setIdleState()
+    }
+
+    private fun selectTone(mode: ToneMode) {
+        activeToneMode = mode
+        updateToneTabStyles()
+        tvPreviewText?.text = getActiveToneText()
+    }
+
+    private fun getActiveToneText(): String {
+        val tones = currentTones ?: return ""
+        return when (activeToneMode) {
+            ToneMode.CASUAL -> tones.casual
+            ToneMode.SEMI_FORMAL -> tones.semiFormal
+            ToneMode.FORMAL -> tones.formal
+        }
+    }
+
+    private fun updateToneTabStyles() {
+        tabCasual?.background = ContextCompat.getDrawable(
+            appContext,
+            if (activeToneMode == ToneMode.CASUAL) R.drawable.bg_tone_selected else R.drawable.bg_tone_unselected
+        )
+        tabCasual?.setTextColor(if (activeToneMode == ToneMode.CASUAL) ContextCompat.getColor(appContext, R.color.white) else ContextCompat.getColor(appContext, R.color.text_secondary))
+
+        tabSemiFormal?.background = ContextCompat.getDrawable(
+            appContext,
+            if (activeToneMode == ToneMode.SEMI_FORMAL) R.drawable.bg_tone_selected else R.drawable.bg_tone_unselected
+        )
+        tabSemiFormal?.setTextColor(if (activeToneMode == ToneMode.SEMI_FORMAL) ContextCompat.getColor(appContext, R.color.white) else ContextCompat.getColor(appContext, R.color.text_secondary))
+
+        tabFormal?.background = ContextCompat.getDrawable(
+            appContext,
+            if (activeToneMode == ToneMode.FORMAL) R.drawable.bg_tone_selected else R.drawable.bg_tone_unselected
+        )
+        tabFormal?.setTextColor(if (activeToneMode == ToneMode.FORMAL) ContextCompat.getColor(appContext, R.color.white) else ContextCompat.getColor(appContext, R.color.text_secondary))
     }
 
     private fun setIdleState() {
@@ -245,8 +317,11 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
         layoutPreview?.visibility = View.GONE
     }
 
-    private fun setPreviewState(text: String) {
-        tvPreviewText?.text = text
+    private fun setPreviewState() {
+        activeToneMode = ToneMode.SEMI_FORMAL
+        updateToneTabStyles()
+        tvPreviewText?.text = getActiveToneText()
+
         layoutIdle?.visibility = View.GONE
         layoutRecording?.visibility = View.GONE
         layoutProcessing?.visibility = View.GONE
@@ -268,14 +343,19 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
         }
     }
 
+    /**
+     * Touch & Drag handling:
+     * Differentiates drag vs tap reliably without letting child click listeners block dragging!
+     */
     @SuppressLint("ClickableViewAccessibility")
-    private fun setupTouchListener(view: View) {
+    private fun setupDragTouchListener(view: View) {
         view.setOnTouchListener(object : View.OnTouchListener {
             private var initialX = 0
             private var initialY = 0
             private var initialTouchX = 0f
             private var initialTouchY = 0f
             private var isDragging = false
+            private var touchDownTime = 0L
 
             override fun onTouch(v: View, event: MotionEvent): Boolean {
                 val params = layoutParams ?: return false
@@ -286,15 +366,16 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
                         initialY = params.y
                         initialTouchX = event.rawX
                         initialTouchY = event.rawY
+                        touchDownTime = System.currentTimeMillis()
                         isDragging = false
-                        return false
+                        return true
                     }
 
                     MotionEvent.ACTION_MOVE -> {
                         val deltaX = (event.rawX - initialTouchX).toInt()
                         val deltaY = (event.rawY - initialTouchY).toInt()
 
-                        if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+                        if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
                             isDragging = true
                             params.x = initialX + deltaX
                             params.y = initialY + deltaY
@@ -309,12 +390,42 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
                     }
 
                     MotionEvent.ACTION_UP -> {
-                        return isDragging
+                        if (isDragging) {
+                            isDragging = false
+                            return true
+                        }
+
+                        // It's a TAP!
+                        val duration = System.currentTimeMillis() - touchDownTime
+                        if (duration < 500) {
+                            handleTap(event.rawX, event.rawY)
+                        }
+                        return true
                     }
                 }
                 return false
             }
         })
+    }
+
+    private fun handleTap(rawX: Float, rawY: Float) {
+        // If in idle state:
+        if (layoutIdle?.visibility == View.VISIBLE) {
+            val closeBtn = bubbleView?.findViewById<View>(R.id.btn_close_idle)
+            if (closeBtn != null && isPointInside(rawX, rawY, closeBtn)) {
+                hideBubble()
+                return
+            }
+            startVoiceCapture()
+        }
+    }
+
+    private fun isPointInside(rawX: Float, rawY: Float, view: View): Boolean {
+        val location = IntArray(2)
+        view.getLocationOnScreen(location)
+        val x = location[0]
+        val y = location[1]
+        return rawX >= x && rawX <= x + view.width && rawY >= y && rawY <= y + view.height
     }
 
     companion object {

@@ -3,6 +3,7 @@ package com.flowvoice.app.network
 import android.content.Context
 import android.util.Log
 import com.flowvoice.app.data.PreferencesManager
+import com.flowvoice.app.data.ToneVariants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -11,10 +12,10 @@ class SpeechPolisherEngine(context: Context) {
 
     private val prefs = PreferencesManager(context)
 
-    suspend fun processAudio(
+    suspend fun processAudioForTones(
         audioFile: File,
         onStatusUpdate: (String) -> Unit
-    ): Result<String> = withContext(Dispatchers.IO) {
+    ): Result<ToneVariants> = withContext(Dispatchers.IO) {
         val apiKey = prefs.apiKey
         if (apiKey.isBlank()) {
             return@withContext Result.failure(
@@ -23,9 +24,6 @@ class SpeechPolisherEngine(context: Context) {
         }
 
         val provider = prefs.provider
-        val tone = prefs.tone
-
-        Log.d(TAG, "Processing audio with provider: $provider, tone: $tone")
 
         try {
             when (provider) {
@@ -40,22 +38,19 @@ class SpeechPolisherEngine(context: Context) {
                     }
 
                     val rawTranscript = asrResult.getOrNull().orEmpty()
-                    Log.d(TAG, "Raw transcript: $rawTranscript")
-
                     if (rawTranscript.isBlank()) {
                         return@withContext Result.failure(Exception("No speech detected"))
                     }
 
-                    withContext(Dispatchers.Main) { onStatusUpdate("Polishing English...") }
-                    val polishResult = client.polishEnglish(rawTranscript, tone)
-                    if (polishResult.isFailure) {
-                        // Fallback to raw transcript if LLM step fails
-                        return@withContext Result.success(rawTranscript)
+                    withContext(Dispatchers.Main) { onStatusUpdate("Polishing tones...") }
+                    val tonesResult = client.polishAllTones(rawTranscript)
+                    if (tonesResult.isFailure) {
+                        return@withContext Result.success(
+                            ToneVariants(casual = rawTranscript, semiFormal = rawTranscript, formal = rawTranscript)
+                        )
                     }
 
-                    val polishedText = polishResult.getOrNull().orEmpty()
-                    Log.d(TAG, "Polished text: $polishedText")
-                    Result.success(polishedText)
+                    Result.success(tonesResult.getOrNull()!!)
                 }
 
                 PreferencesManager.PROVIDER_SARVAM -> {
@@ -73,8 +68,9 @@ class SpeechPolisherEngine(context: Context) {
                     }
 
                     withContext(Dispatchers.Main) { onStatusUpdate("Translating to English...") }
-                    val polishResult = client.translateAndPolish(rawTranscript, tone)
-                    Result.success(polishResult.getOrDefault(rawTranscript))
+                    val polishResult = client.translateAndPolish(rawTranscript, prefs.tone)
+                    val text = polishResult.getOrDefault(rawTranscript)
+                    Result.success(ToneVariants(casual = text, semiFormal = text, formal = text))
                 }
 
                 else -> Result.failure(Exception("Unsupported AI provider: $provider"))
@@ -83,7 +79,6 @@ class SpeechPolisherEngine(context: Context) {
             Log.e(TAG, "Process audio failed", e)
             Result.failure(e)
         } finally {
-            // Clean up temporary audio file
             try {
                 if (audioFile.exists()) {
                     audioFile.delete()
@@ -91,6 +86,25 @@ class SpeechPolisherEngine(context: Context) {
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to delete temp audio file", e)
             }
+        }
+    }
+
+    suspend fun processAudio(
+        audioFile: File,
+        onStatusUpdate: (String) -> Unit
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val result = processAudioForTones(audioFile, onStatusUpdate)
+        if (result.isSuccess) {
+            val variants = result.getOrNull()!!
+            val tone = prefs.tone
+            val text = when {
+                tone.contains("Casual", ignoreCase = true) -> variants.casual
+                tone.contains("Formal", ignoreCase = true) -> variants.formal
+                else -> variants.semiFormal
+            }
+            Result.success(text)
+        } else {
+            Result.failure(result.exceptionOrNull()!)
         }
     }
 

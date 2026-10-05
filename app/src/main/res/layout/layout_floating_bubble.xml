@@ -15,25 +15,25 @@
         android:background="@drawable/bg_bubble_idle"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="12dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="14dp"
-        android:paddingBottom="8dp"
+        android:paddingStart="10dp"
+        android:paddingTop="7dp"
+        android:paddingEnd="10dp"
+        android:paddingBottom="7dp"
         android:visibility="visible">
 
         <ImageView
             android:id="@+id/btn_idle_mic"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
             android:background="@drawable/bg_button_primary"
-            android:padding="6dp"
+            android:padding="5dp"
             android:src="@drawable/ic_mic"
             app:tint="@color/white" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="6dp"
             android:text="Flow"
             android:textColor="@color/text_primary"
             android:textSize="13sp"
@@ -41,15 +41,16 @@
 
         <ImageView
             android:id="@+id/btn_close_idle"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
             android:layout_marginStart="8dp"
-            android:padding="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:padding="3dp"
             android:src="@drawable/ic_close"
             app:tint="@color/text_muted" />
     </LinearLayout>
 
-    <!-- 2. RECORDING STATE: Expanded red pill with pulsing indicator and stop button -->
+    <!-- 2. RECORDING STATE: Shorter & compact pill (Image 2) -->
     <LinearLayout
         android:id="@+id/layout_state_recording"
         android:layout_width="wrap_content"
@@ -57,18 +58,19 @@
         android:background="@drawable/bg_bubble_recording"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="12dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="12dp"
-        android:paddingBottom="8dp"
+        android:paddingStart="8dp"
+        android:paddingTop="5dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="5dp"
         android:visibility="gone">
 
+        <!-- Clickable Mic: Tapping mic also stops recording! -->
         <ImageView
             android:id="@+id/img_recording_indicator"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
             android:background="#EF4444"
-            android:padding="6dp"
+            android:padding="5dp"
             android:src="@drawable/ic_mic"
             app:tint="@color/white" />
 
@@ -76,30 +78,30 @@
             android:id="@+id/tv_recording_status"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="Listening..."
+            android:layout_marginStart="6dp"
+            android:text="Listening"
             android:textColor="@color/text_primary"
-            android:textSize="13sp"
+            android:textSize="12sp"
             android:textStyle="bold" />
 
-        <!-- Stop / Done Button -->
+        <!-- Stop Square Button -->
         <ImageView
             android:id="@+id/btn_stop_recording"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_marginStart="12dp"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:layout_marginStart="8dp"
             android:background="@drawable/bg_card"
-            android:padding="8dp"
+            android:padding="6dp"
             android:src="@drawable/ic_stop"
             app:tint="@color/recording_red" />
 
-        <!-- Cancel Button -->
+        <!-- Cancel / Dismiss Button -->
         <ImageView
             android:id="@+id/btn_cancel_recording"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
             android:layout_marginStart="6dp"
-            android:padding="6dp"
+            android:padding="4dp"
             android:src="@drawable/ic_close"
             app:tint="@color/text_muted" />
     </LinearLayout>
@@ -112,85 +114,147 @@
         android:background="@drawable/bg_bubble_processing"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="14dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="8dp"
+        android:paddingStart="12dp"
+        android:paddingTop="7dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="7dp"
         android:visibility="gone">
 
         <ProgressBar
-            android:layout_width="20dp"
-            android:layout_height="20dp"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
             android:indeterminate="true"
             android:indeterminateTint="@color/primary_light" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:text="Polishing English..."
+            android:layout_marginStart="8dp"
+            android:text="Polishing..."
             android:textColor="@color/primary_light"
-            android:textSize="13sp"
+            android:textSize="12sp"
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- 4. PREVIEW / RESULT STATE -->
+    <!-- 4. PREVIEW / TONE SELECTION CARD (Matching Image 4) -->
     <LinearLayout
         android:id="@+id/layout_state_preview"
-        android:layout_width="280dp"
+        android:layout_width="310dp"
         android:layout_height="wrap_content"
-        android:background="@drawable/bg_card"
+        android:background="@drawable/bg_bubble_card"
         android:orientation="vertical"
-        android:padding="12dp"
+        android:padding="14dp"
         android:visibility="gone">
 
+        <!-- Top Tone Selector Tabs -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
+            <!-- Casual Tab -->
             <TextView
+                android:id="@+id/tab_tone_casual"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="32dp"
                 android:layout_weight="1"
-                android:text="Polished Result"
-                android:textColor="@color/text_muted"
+                android:background="@drawable/bg_tone_unselected"
+                android:gravity="center"
+                android:text="😊 Casual"
+                android:textColor="@color/text_secondary"
                 android:textSize="11sp"
                 android:textStyle="bold" />
 
+            <!-- Semi Formal Tab -->
+            <TextView
+                android:id="@+id/tab_tone_semi_formal"
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1.2"
+                android:background="@drawable/bg_tone_selected"
+                android:gravity="center"
+                android:text="🙂 Semi formal"
+                android:textColor="@color/white"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <!-- Formal Tab -->
+            <TextView
+                android:id="@+id/tab_tone_formal"
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_tone_unselected"
+                android:gravity="center"
+                android:text="👓 Formal"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <!-- Close Dialog Button -->
             <ImageView
                 android:id="@+id/btn_dismiss_preview"
-                android:layout_width="20dp"
-                android:layout_height="20dp"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_marginStart="6dp"
+                android:padding="4dp"
                 android:src="@drawable/ic_close"
                 app:tint="@color/text_muted" />
         </LinearLayout>
 
+        <!-- Polished Text Display Area -->
         <TextView
             android:id="@+id/tv_preview_text"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textColor="@color/text_primary"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="12dp"
+            android:lineSpacingExtra="3dp"
+            android:text="Your polished English will appear here..."
+            android:textColor="@color/white"
             android:textSize="14sp" />
 
+        <!-- Bottom Action Row -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:gravity="end"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <Button
+            <!-- Language Badge -->
+            <TextView
+                android:id="@+id/chip_language"
+                android:layout_width="wrap_content"
+                android:layout_height="28dp"
+                android:background="@drawable/bg_tone_unselected"
+                android:gravity="center"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:text="English"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <!-- Insert Button (with return icon ↵) -->
+            <TextView
                 android:id="@+id/btn_insert_text"
-                style="@style/Widget.Material3.Button.TonalButton"
                 android:layout_width="wrap_content"
                 android:layout_height="36dp"
-                android:backgroundTint="@color/primary"
-                android:text="Insert"
+                android:background="@drawable/bg_button_insert"
+                android:gravity="center"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:text="Insert ↵"
                 android:textColor="@color/white"
-                android:textSize="12sp" />
+                android:textSize="13sp"
+                android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
 
