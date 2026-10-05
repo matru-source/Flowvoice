@@ -34,7 +34,7 @@ class GroqClient(private val apiKey: String) {
                 .addFormDataPart("file", audioFile.name, fileBody)
                 .addFormDataPart(
                     "prompt",
-                    "Hindi, Hinglish, Tamil, Telugu, Malayalam, Kannada, code-switching conversational Indian English"
+                    "Odia, Sambalpuri, Hindi, Hinglish, Tamil, Telugu, Malayalam, Kannada, code-switching conversational Indian English, Odia-English phrases (e.g. Dekha kohila, Edit kori rokhitha, Kan hauchi, Ketebele asibu)"
                 )
                 .build()
 
@@ -65,7 +65,7 @@ class GroqClient(private val apiKey: String) {
         try {
             val systemPrompt = """
                 You are an expert voice-to-English communication assistant like Superflow.
-                The user speaks thoughts in Hindi, Tamil, Telugu, Kannada, Malayalam, or Hinglish (code-mixed with colloquialisms and filler words).
+                The user speaks thoughts in Odia (ଓଡ଼ିଆ), Hindi, Tamil, Telugu, Kannada, Malayalam, or mixed code-switching (e.g. Odia-English like "Dekha kohila", "Edit kori rokhitha", "Ketebele asibu", or Hinglish) with colloquialisms and filler words.
                 
                 YOUR TASK:
                 Translate and refine the user's speech into THREE different English tones:
@@ -74,7 +74,8 @@ class GroqClient(private val apiKey: String) {
                 3. "formal": Professional, executive business tone (for emails, Slack, clients, managers).
                 
                 RULES:
-                - Remove filler words (matlab, yaani, like, you know, um, toh).
+                - Accurately understand Odia words, phrases, and code-mixing into natural English.
+                - Remove filler words (matlab, yaani, like, you know, um, toh, mane).
                 - Fix grammar, tense, and awkward Indian language literal translations.
                 - Return ONLY a JSON object with exactly these 3 keys:
                 {
