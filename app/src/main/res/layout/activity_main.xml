@@ -162,6 +162,8 @@
                     android:layout_height="36dp"
                     android:text="@string/status_action_grant"
                     android:textSize="12sp" />
+            </LinearLayout>
+
             <!-- Restricted Permission Helper Banner -->
             <LinearLayout
                 android:id="@+id/card_restricted_help"
