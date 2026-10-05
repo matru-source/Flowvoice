@@ -157,41 +157,56 @@
             <TextView
                 android:id="@+id/tab_tone_casual"
                 android:layout_width="0dp"
-                android:layout_height="34dp"
+                android:layout_height="36dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_tone_unselected"
                 android:gravity="center"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:singleLine="true"
+                android:maxLines="1"
+                android:ellipsize="end"
                 android:text="😊 Casual"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <!-- Semi Formal Tab -->
             <TextView
                 android:id="@+id/tab_tone_semi_formal"
                 android:layout_width="0dp"
-                android:layout_height="34dp"
-                android:layout_marginStart="6dp"
-                android:layout_weight="1.2"
+                android:layout_height="36dp"
+                android:layout_marginStart="5dp"
+                android:layout_weight="1.15"
                 android:background="@drawable/bg_tone_selected"
                 android:gravity="center"
-                android:text="🙂 Semi formal"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:singleLine="true"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:text="🙂 Semi-formal"
                 android:textColor="@color/white"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <!-- Formal Tab -->
             <TextView
                 android:id="@+id/tab_tone_formal"
                 android:layout_width="0dp"
-                android:layout_height="34dp"
-                android:layout_marginStart="6dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="5dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_tone_unselected"
                 android:gravity="center"
-                android:text="👓 Formal"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:singleLine="true"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:text="👔 Formal"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <!-- Close Dialog Button -->
@@ -199,7 +214,7 @@
                 android:id="@+id/btn_dismiss_preview"
                 android:layout_width="26dp"
                 android:layout_height="26dp"
-                android:layout_marginStart="8dp"
+                android:layout_marginStart="6dp"
                 android:padding="4dp"
                 android:src="@drawable/ic_close"
                 app:tint="@color/text_muted" />
@@ -233,18 +248,21 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <!-- Language Badge -->
+            <!-- Language Badge / Toggle -->
             <TextView
                 android:id="@+id/chip_language"
                 android:layout_width="wrap_content"
-                android:layout_height="28dp"
+                android:layout_height="30dp"
                 android:background="@drawable/bg_tone_unselected"
+                android:clickable="true"
+                android:focusable="true"
                 android:gravity="center"
                 android:paddingStart="10dp"
                 android:paddingEnd="10dp"
-                android:text="English"
-                android:textColor="@color/text_secondary"
-                android:textSize="11sp" />
+                android:text="🌐 English"
+                android:textColor="@color/primary_light"
+                android:textSize="11sp"
+                android:textStyle="bold" />
 
             <View
                 android:layout_width="0dp"

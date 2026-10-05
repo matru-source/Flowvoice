@@ -58,9 +58,11 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
     private var tabSemiFormal: TextView? = null
     private var tabFormal: TextView? = null
     private var tvPreviewText: TextView? = null
+    private var chipLanguage: TextView? = null
 
     private var currentTones: ToneVariants? = null
     private var activeToneMode: ToneMode = ToneMode.SEMI_FORMAL
+    private var isShowingOriginal: Boolean = false
 
     var isBubbleAttached: Boolean = false
         private set
@@ -162,6 +164,7 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
         tabSemiFormal = root.findViewById(R.id.tab_tone_semi_formal)
         tabFormal = root.findViewById(R.id.tab_tone_formal)
         tvPreviewText = root.findViewById(R.id.tv_preview_text)
+        chipLanguage = root.findViewById(R.id.chip_language)
 
         // RECORDING STATE ACTIONS:
         root.findViewById<ImageView>(R.id.img_recording_indicator)?.setOnClickListener {
@@ -189,12 +192,23 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
             selectTone(ToneMode.FORMAL)
         }
 
+        // Language Chip Toggle (English <-> Original Indic Speech)
+        chipLanguage?.setOnClickListener {
+            toggleLanguageView()
+        }
+
         // Insert Button (↵)
         root.findViewById<View>(R.id.btn_insert_text)?.setOnClickListener {
-            val textToInsert = getActiveToneText()
-            onTextReadyListener?.invoke(textToInsert)
-            vibratePhone(40)
-            Toast.makeText(appContext, "Polished English text inserted!", Toast.LENGTH_SHORT).show()
+            val textToInsert = if (isShowingOriginal) {
+                currentTones?.original?.ifBlank { getActiveToneText() } ?: getActiveToneText()
+            } else {
+                getActiveToneText()
+            }
+            if (textToInsert.isNotBlank()) {
+                onTextReadyListener?.invoke(textToInsert)
+                vibratePhone(40)
+                Toast.makeText(appContext, "Polished text inserted!", Toast.LENGTH_SHORT).show()
+            }
             setIdleState()
         }
 
@@ -229,14 +243,15 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
         autoStopHandler.removeCallbacksAndMessages(null)
         vibratePhone(40)
         currentRecordedFile = audioRecorder.stopRecording()
-        setProcessingState()
 
         val file = currentRecordedFile
-        if (file == null || !file.exists() || file.length() < 1000) {
-            Toast.makeText(appContext, "Audio too short", Toast.LENGTH_SHORT).show()
+        if (file == null || !file.exists() || file.length() < 2200) {
+            Toast.makeText(appContext, "No speech detected. Please speak closer to the mic.", Toast.LENGTH_SHORT).show()
             setIdleState()
             return
         }
+
+        setProcessingState()
 
         coroutineScope.launch {
             val result = polisherEngine.processAudioForTones(file) { statusMsg ->
@@ -247,10 +262,10 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
                 currentTones = result.getOrNull()
                 vibratePhone(60)
 
-                // Show Tone Selection Card (Image 4)
+                // Show Tone Selection Card
                 setPreviewState()
             } else {
-                val error = result.exceptionOrNull()?.message ?: "Processing error"
+                val error = result.exceptionOrNull()?.message ?: "No speech detected"
                 Toast.makeText(appContext, error, Toast.LENGTH_LONG).show()
                 setIdleState()
             }
@@ -265,9 +280,42 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
     }
 
     private fun selectTone(mode: ToneMode) {
+        vibratePhone(25)
+        isShowingOriginal = false
+        chipLanguage?.text = "🌐 English"
+        chipLanguage?.background = ContextCompat.getDrawable(appContext, R.drawable.bg_tone_unselected)
+        chipLanguage?.setTextColor(ContextCompat.getColor(appContext, R.color.primary_light))
         activeToneMode = mode
         updateToneTabStyles()
         tvPreviewText?.text = getActiveToneText()
+    }
+
+    private fun toggleLanguageView() {
+        vibratePhone(30)
+        val tones = currentTones
+        if (tones == null) {
+            Toast.makeText(appContext, "No text available", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        isShowingOriginal = !isShowingOriginal
+
+        if (isShowingOriginal) {
+            val originalText = tones.original.ifBlank { getActiveToneText() }
+            tvPreviewText?.text = originalText
+            chipLanguage?.text = "🗣️ Original"
+            chipLanguage?.background = ContextCompat.getDrawable(appContext, R.drawable.bg_tone_selected)
+            chipLanguage?.setTextColor(ContextCompat.getColor(appContext, R.color.white))
+            dimToneTabs()
+            Toast.makeText(appContext, "Showing original spoken speech", Toast.LENGTH_SHORT).show()
+        } else {
+            tvPreviewText?.text = getActiveToneText()
+            chipLanguage?.text = "🌐 English"
+            chipLanguage?.background = ContextCompat.getDrawable(appContext, R.drawable.bg_tone_unselected)
+            chipLanguage?.setTextColor(ContextCompat.getColor(appContext, R.color.primary_light))
+            updateToneTabStyles()
+            Toast.makeText(appContext, "Translated to English (${activeToneMode.name.lowercase().replace('_', ' ')})", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun getActiveToneText(): String {
@@ -299,6 +347,15 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
         tabFormal?.setTextColor(if (activeToneMode == ToneMode.FORMAL) ContextCompat.getColor(appContext, R.color.white) else ContextCompat.getColor(appContext, R.color.text_secondary))
     }
 
+    private fun dimToneTabs() {
+        tabCasual?.background = ContextCompat.getDrawable(appContext, R.drawable.bg_tone_unselected)
+        tabCasual?.setTextColor(ContextCompat.getColor(appContext, R.color.text_secondary))
+        tabSemiFormal?.background = ContextCompat.getDrawable(appContext, R.drawable.bg_tone_unselected)
+        tabSemiFormal?.setTextColor(ContextCompat.getColor(appContext, R.color.text_secondary))
+        tabFormal?.background = ContextCompat.getDrawable(appContext, R.drawable.bg_tone_unselected)
+        tabFormal?.setTextColor(ContextCompat.getColor(appContext, R.color.text_secondary))
+    }
+
     private fun setIdleState() {
         layoutIdle?.visibility = View.VISIBLE
         layoutRecording?.visibility = View.GONE
@@ -321,7 +378,11 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
     }
 
     private fun setPreviewState() {
+        isShowingOriginal = false
         activeToneMode = ToneMode.SEMI_FORMAL
+        chipLanguage?.text = "🌐 English"
+        chipLanguage?.background = ContextCompat.getDrawable(appContext, R.drawable.bg_tone_unselected)
+        chipLanguage?.setTextColor(ContextCompat.getColor(appContext, R.color.primary_light))
         updateToneTabStyles()
         tvPreviewText?.text = getActiveToneText()
 

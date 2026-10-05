@@ -35,7 +35,7 @@ class GroqClient(private val apiKey: String) {
                 .addFormDataPart("temperature", "0.0")
                 .addFormDataPart(
                     "prompt",
-                    "Odia, Sambalpuri, Hindi, Hinglish, Tamil, Telugu, Malayalam, Kannada, code-switching conversational Indian English, Odia-English phrases (e.g. Dekha kohila, Edit kori rokhitha, Kan hauchi, Ketebele asibu)"
+                    "Odia, Sambalpuri, Hindi, Hinglish, Tamil, Telugu, Malayalam, Kannada, code-switching conversational Indian English."
                 )
                 .build()
 
@@ -55,20 +55,8 @@ class GroqClient(private val apiKey: String) {
 
             val json = JSONObject(bodyString)
             val transcript = json.optString("text", "").trim()
-
-            // Filter out Whisper silence hallucinations
-            val lower = transcript.lowercase()
-            if (lower.contains("amara.org") ||
-                lower.contains("subtitles by") ||
-                lower.contains("thank you for watching") ||
-                lower.contains("translated by") ||
-                lower.contains("sous-titres") ||
-                lower.contains("untertitel") ||
-                transcript.length < 2
-            ) {
-                return@withContext Result.failure(
-                    Exception("No clear speech heard. Please speak closer to the mic.")
-                )
+            if (isHallucinationOrEmpty(transcript)) {
+                return@withContext Result.failure(Exception("No clear speech detected. Please speak closer to the mic."))
             }
 
             Result.success(transcript)
@@ -78,70 +66,29 @@ class GroqClient(private val apiKey: String) {
         }
     }
 
-    suspend fun polishAllTones(rawTranscript: String): Result<ToneVariants> = withContext(Dispatchers.IO) {
+    /**
+     * Translates any spoken Indian language (Hindi, Odia, Sambalpuri, Tamil, Telugu, etc.)
+     * directly into fluent English using Whisper Large v3.
+     */
+    suspend fun translateAudioToEnglish(audioFile: File): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val systemPrompt = """
-                You are an expert AI voice-to-English communication polish engine like Superflow.
-                The user speaks in Odia (ଓଡ଼ିଆ), Sambalpuri, Hindi, Hinglish, Tamil, Telugu, Kannada, Malayalam, or conversational code-mixed Indian English (e.g., "Dekha kohila kan asiba", "Edit kori rokhitha", "Bhai client ko bol do kal tak report bhej denge").
-                
-                YOUR TASK:
-                Convert and polish the user's spoken thoughts into THREE DISTINCT, FLUENT ENGLISH TONES:
-                
-                1. "casual":
-                   - Conversational, warm, relaxed messaging style.
-                   - Perfect for WhatsApp chats, close friends, or informal DMs.
-                   - Use friendly phrasing or a natural emoji if suitable.
-                   
-                2. "semi_formal":
-                   - Clear, polite, standard natural English.
-                   - Perfect for colleagues, everyday work chats, and acquaintances.
-                   
-                3. "formal":
-                   - Sophisticated, professional, executive business English.
-                   - Perfect for client communications, corporate emails, Slack, and managers.
-                
-                CRITICAL INSTRUCTIONS:
-                - Accurately translate Odia, Hindi, and regional Indian language phrases into natural English.
-                - Eliminate speech disfluencies, fillers (matlab, yaani, like, you know, um, toh, mane), and awkward literal Indian English phrasing.
-                - Make sure all 3 tones are NOTICEABLY DIFFERENT in vocabulary and formality.
-                - Return ONLY a valid JSON object with keys: "casual", "semi_formal", "formal".
-                
-                Example 1:
-                User: "Kal tak report bhej dunga tension mat lo"
-                {
-                  "casual": "Don't stress, I'll send over the report by tomorrow! 👍",
-                  "semi_formal": "I will send across the report by tomorrow, no worries.",
-                  "formal": "Please be assured that I will submit the report by tomorrow."
-                }
-                
-                Example 2:
-                User: "Dekha kohila kan heba"
-                {
-                  "casual": "Hey, tell me what happened! 🤔",
-                  "semi_formal": "Please let me know how it went.",
-                  "formal": "Kindly advise on the current outcome or status."
-                }
-            """.trimIndent()
+            val audioMediaType = "audio/m4a".toMediaTypeOrNull()
+            val fileBody = audioFile.asRequestBody(audioMediaType)
 
-            val messages = JSONArray().apply {
-                put(JSONObject().put("role", "system").put("content", systemPrompt))
-                put(JSONObject().put("role", "user").put("content", rawTranscript))
-            }
-
-            val payload = JSONObject().apply {
-                put("model", "llama-3.3-70b-versatile")
-                put("messages", messages)
-                put("temperature", 0.4)
-                put("response_format", JSONObject().put("type", "json_object"))
-                put("max_tokens", 800)
-            }
-
-            val requestBody = payload.toString().toRequestBody("application/json".toMediaTypeOrNull())
+            val requestBody = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("model", "whisper-large-v3")
+                .addFormDataPart("file", audioFile.name, fileBody)
+                .addFormDataPart("temperature", "0.0")
+                .addFormDataPart(
+                    "prompt",
+                    "Translate faithfully into clear, natural English from Odia, Sambalpuri, Hindi, Hinglish, Tamil, Telugu, Kannada, or Malayalam."
+                )
+                .build()
 
             val request = Request.Builder()
-                .url("https://api.groq.com/openai/v1/chat/completions")
+                .url("https://api.groq.com/openai/v1/audio/translations")
                 .header("Authorization", "Bearer $apiKey")
-                .header("Content-Type", "application/json")
                 .post(requestBody)
                 .build()
 
@@ -149,31 +96,222 @@ class GroqClient(private val apiKey: String) {
             val bodyString = response.body?.string().orEmpty()
 
             if (!response.isSuccessful) {
-                Log.e(TAG, "Groq LLM polishing failed: HTTP ${response.code} -> $bodyString")
-                return@withContext Result.failure(Exception("Polishing failed: HTTP ${response.code}"))
+                Log.e(TAG, "Groq audio translation failed: HTTP ${response.code} -> $bodyString")
+                return@withContext Result.failure(Exception("Translation failed: HTTP ${response.code}"))
             }
 
             val json = JSONObject(bodyString)
-            val choices = json.getJSONArray("choices")
-            if (choices.length() > 0) {
-                val content = choices.getJSONObject(0)
-                    .getJSONObject("message")
-                    .getString("content")
-                    .trim()
+            val translatedText = json.optString("text", "").trim()
 
-                val parsed = extractJsonObject(content)
-                val casual = parsed.optString("casual", "").ifBlank { rawTranscript }
-                val semiFormal = parsed.optString("semi_formal", "").ifBlank { casual }
-                val formal = parsed.optString("formal", "").ifBlank { semiFormal }
-
-                Result.success(ToneVariants(casual = casual, semiFormal = semiFormal, formal = formal))
-            } else {
-                Result.failure(Exception("Empty LLM response"))
+            if (isHallucinationOrEmpty(translatedText)) {
+                return@withContext Result.failure(Exception("No clear speech detected. Please speak closer to the mic."))
             }
+
+            Result.success(translatedText)
         } catch (e: Exception) {
-            Log.e(TAG, "Groq LLM network error", e)
+            Log.e(TAG, "Groq audio translation error", e)
             Result.failure(e)
         }
+    }
+
+    private fun isHallucinationOrEmpty(text: String): Boolean {
+        val trimmed = text.trim()
+        if (trimmed.length < 2) return true
+        val lower = trimmed.lowercase()
+
+        val phrases = listOf(
+            "amara.org",
+            "subtitles by",
+            "subtitles",
+            "thank you for watching",
+            "thanks for watching",
+            "subscribe to",
+            "please subscribe",
+            "like and subscribe",
+            "translated by",
+            "sous-titres",
+            "untertitel",
+            "captioning",
+            "closed captions",
+            "transcription by",
+            "watching!",
+            "bye.",
+            "[music]",
+            "(music)",
+            "[applause]",
+            "(applause)",
+            "[silence]",
+            "(silence)"
+        )
+        if (phrases.any { lower.contains(it) }) return true
+
+        // Filter out single punctuation or single filler word hallucinations from silence
+        val clean = lower.replace(Regex("[^a-zA-Z0-9\\u0900-\\u097F\\u0B00-\\u0B7F]"), " ").trim()
+        val words = clean.split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (words.isEmpty()) return true
+        if (words.size == 1 && words[0] in listOf("you", "the", "a", "an", "so", "oh", "um", "uh", "thank", "thanks", "bye")) {
+            return true
+        }
+
+        return false
+    }
+
+    /**
+     * Translates raw Indic text (Hindi, Odia, etc.) into clear English using Groq LLM.
+     */
+    suspend fun translateTextToEnglish(text: String): Result<String> = withContext(Dispatchers.IO) {
+        val clean = text.trim()
+        if (clean.isBlank()) return@withContext Result.failure(Exception("No text to translate"))
+
+        val systemPrompt = "You are a professional translator. Translate the following text faithfully into clear, natural, modern English. Output ONLY the translated English text, without markdown, quotes, explanations, or notes."
+        val messages = JSONArray().apply {
+            put(JSONObject().put("role", "system").put("content", systemPrompt))
+            put(JSONObject().put("role", "user").put("content", clean))
+        }
+
+        val candidateModels = listOf("llama-3.1-8b-instant", "llama-3.3-70b-versatile")
+        for (modelName in candidateModels) {
+            try {
+                val payload = JSONObject().apply {
+                    put("model", modelName)
+                    put("messages", messages)
+                    put("temperature", 0.2)
+                    put("max_tokens", 350)
+                }
+
+                val requestBody = payload.toString().toRequestBody("application/json".toMediaTypeOrNull())
+                val request = Request.Builder()
+                    .url("https://api.groq.com/openai/v1/chat/completions")
+                    .header("Authorization", "Bearer $apiKey")
+                    .header("Content-Type", "application/json")
+                    .post(requestBody)
+                    .build()
+
+                val response = httpClient.newCall(request).execute()
+                val bodyString = response.body?.string().orEmpty()
+
+                if (response.isSuccessful) {
+                    val json = JSONObject(bodyString)
+                    val choices = json.getJSONArray("choices")
+                    if (choices.length() > 0) {
+                        val translated = choices.getJSONObject(0)
+                            .getJSONObject("message")
+                            .getString("content")
+                            .trim()
+                            .removeSurrounding("\"")
+                        if (translated.isNotBlank()) {
+                            return@withContext Result.success(translated)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "translateTextToEnglish error with model $modelName", e)
+            }
+        }
+        Result.failure(Exception("Failed to translate text to English"))
+    }
+
+    /**
+     * Refines the English text into three distinctly different communication styles:
+     * Casual, Semi-formal, and Formal.
+     */
+    suspend fun polishAllTones(englishBaseText: String): Result<ToneVariants> = withContext(Dispatchers.IO) {
+        val candidateModels = listOf("llama-3.3-70b-versatile", "llama-3.1-8b-instant")
+
+        val systemPrompt = """
+            You are Superflow AI, an elite voice communication assistant.
+            You are given a message spoken by the user (which is already in English):
+            
+            YOUR TASK:
+            Generate THREE DISTINCTLY DIFFERENT, highly polished English versions of this message:
+            
+            1. "casual": Warm, informal, relaxed messaging style (for WhatsApp chats, friends, casual DMs, with a natural emoji).
+            2. "semi_formal": Clear, polite, standard everyday professional English (for colleagues, team chats, acquaintances).
+            3. "formal": Executive, professional, sophisticated business English (for client emails, corporate reports, managers).
+            
+            CRITICAL RULES:
+            - The three tones MUST be noticeably different in vocabulary, phrasing, and structure.
+            - Never return identical sentences for the tones.
+            - Output ONLY a valid JSON object with keys: "casual", "semi_formal", "formal".
+            
+            Example:
+            Input: "I will not be going these days, so please focus on your work. Thank you."
+            {
+              "casual": "Hey, I won't be around for a few days, so please focus on your work! Thanks 👍",
+              "semi_formal": "I will not be attending these days, so please concentrate on your work. Thank you.",
+              "formal": "Please be advised that I will be unavailable during this period. Kindly prioritize your respective duties. Thank you."
+            }
+        """.trimIndent()
+
+        val messages = JSONArray().apply {
+            put(JSONObject().put("role", "system").put("content", systemPrompt))
+            put(JSONObject().put("role", "user").put("content", englishBaseText))
+        }
+
+        for (modelName in candidateModels) {
+            try {
+                val payload = JSONObject().apply {
+                    put("model", modelName)
+                    put("messages", messages)
+                    put("temperature", 0.5)
+                    put("max_tokens", 600)
+                }
+
+                val requestBody = payload.toString().toRequestBody("application/json".toMediaTypeOrNull())
+
+                val request = Request.Builder()
+                    .url("https://api.groq.com/openai/v1/chat/completions")
+                    .header("Authorization", "Bearer $apiKey")
+                    .header("Content-Type", "application/json")
+                    .post(requestBody)
+                    .build()
+
+                val response = httpClient.newCall(request).execute()
+                val bodyString = response.body?.string().orEmpty()
+
+                if (response.isSuccessful) {
+                    val json = JSONObject(bodyString)
+                    val choices = json.getJSONArray("choices")
+                    if (choices.length() > 0) {
+                        val content = choices.getJSONObject(0)
+                            .getJSONObject("message")
+                            .getString("content")
+                            .trim()
+
+                        val parsed = extractJsonObject(content)
+                        val casual = parsed.optString("casual", "").trim()
+                        val semiFormal = parsed.optString("semi_formal", "").trim()
+                        val formal = parsed.optString("formal", "").trim()
+
+                        if (casual.isNotBlank() && semiFormal.isNotBlank() && formal.isNotBlank()) {
+                            return@withContext Result.success(
+                                ToneVariants(
+                                    casual = casual,
+                                    semiFormal = semiFormal,
+                                    formal = formal,
+                                    original = englishBaseText
+                                )
+                            )
+                        }
+                    }
+                } else {
+                    Log.w(TAG, "Model $modelName returned HTTP ${response.code}, trying fallback model...")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error with model $modelName, trying fallback...", e)
+            }
+        }
+
+        // Guaranteed fallback if all LLM models encounter issues
+        Result.success(generateToneFallbacks(englishBaseText))
+    }
+
+    fun generateToneFallbacks(text: String): ToneVariants {
+        val clean = text.trim().removeSuffix(".")
+        val casual = "Hey, $clean! 👍"
+        val semiFormal = "$clean."
+        val formal = "Please be advised that $clean."
+        return ToneVariants(casual = casual, semiFormal = semiFormal, formal = formal, original = text)
     }
 
     private fun extractJsonObject(text: String): JSONObject {

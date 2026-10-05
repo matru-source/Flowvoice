@@ -5,6 +5,7 @@ import android.util.Log
 import com.flowvoice.app.data.PreferencesManager
 import com.flowvoice.app.data.ToneVariants
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -31,27 +32,42 @@ class SpeechPolisherEngine(context: Context) {
                 PreferencesManager.PROVIDER_OPENAI -> {
                     val client = GroqClient(apiKey)
 
-                    withContext(Dispatchers.Main) { onStatusUpdate("Transcribing voice...") }
-                    val asrResult = client.transcribeAudio(audioFile)
-                    if (asrResult.isFailure) {
-                        val err = asrResult.exceptionOrNull() ?: Exception("Transcription failed")
+                    withContext(Dispatchers.Main) { onStatusUpdate("Translating speech to English...") }
+
+                    // Concurrently transcribe original speech (Indic) and translate to English
+                    val translateJob = async { client.translateAudioToEnglish(audioFile) }
+                    val originalJob = async { client.transcribeAudio(audioFile) }
+
+                    val translationResult = translateJob.await()
+                    val originalResult = originalJob.await()
+
+                    if (translationResult.isFailure && originalResult.isFailure) {
+                        val err = translationResult.exceptionOrNull()
+                            ?: originalResult.exceptionOrNull()
+                            ?: Exception("No speech detected. Please speak closer to the mic.")
                         return@withContext Result.failure(err)
                     }
 
-                    val rawTranscript = asrResult.getOrNull().orEmpty()
-                    if (rawTranscript.isBlank()) {
-                        return@withContext Result.failure(Exception("No speech detected"))
+                    val rawOriginal = originalResult.getOrNull()?.trim().orEmpty()
+                    val englishBase = if (translationResult.isSuccess && !translationResult.getOrNull().isNullOrBlank()) {
+                        translationResult.getOrNull()!!.trim()
+                    } else {
+                        // Fallback: translate the raw transcript using LLM
+                        val llmTranslate = client.translateTextToEnglish(rawOriginal)
+                        llmTranslate.getOrDefault(rawOriginal)
                     }
+
+                    if (englishBase.isBlank() || englishBase.length < 2) {
+                        return@withContext Result.failure(Exception("No speech detected. Please speak closer to the mic."))
+                    }
+
+                    val finalOriginal = if (rawOriginal.isNotBlank()) rawOriginal else englishBase
 
                     withContext(Dispatchers.Main) { onStatusUpdate("Polishing tones...") }
-                    val tonesResult = client.polishAllTones(rawTranscript)
-                    if (tonesResult.isFailure) {
-                        return@withContext Result.success(
-                            ToneVariants(casual = rawTranscript, semiFormal = rawTranscript, formal = rawTranscript)
-                        )
-                    }
+                    val tonesResult = client.polishAllTones(englishBase)
+                    val variants = tonesResult.getOrElse { client.generateToneFallbacks(englishBase) }
+                        .copy(original = finalOriginal)
 
-                    val variants = tonesResult.getOrNull() ?: ToneVariants(rawTranscript, rawTranscript, rawTranscript)
                     Result.success(variants)
                 }
 
@@ -109,6 +125,13 @@ class SpeechPolisherEngine(context: Context) {
         } else {
             Result.failure(result.exceptionOrNull() ?: Exception("Processing error"))
         }
+    }
+
+    suspend fun translateTextToEnglish(text: String): Result<String> = withContext(Dispatchers.IO) {
+        val apiKey = prefs.apiKey
+        if (apiKey.isBlank()) return@withContext Result.failure(Exception("API Key missing"))
+        val client = GroqClient(apiKey)
+        client.translateTextToEnglish(text)
     }
 
     companion object {
