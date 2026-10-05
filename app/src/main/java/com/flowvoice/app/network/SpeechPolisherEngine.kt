@@ -104,7 +104,7 @@ class SpeechPolisherEngine(context: Context) {
             }
             Result.success(text)
         } else {
-            Result.failure(result.exceptionOrNull()!)
+            Result.failure(result.exceptionOrNull() ?: Exception("Processing error"))
         }
     }
 
