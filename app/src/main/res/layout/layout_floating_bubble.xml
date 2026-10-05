@@ -139,7 +139,7 @@
     <!-- 4. PREVIEW / TONE SELECTION CARD (Matching Image 4) -->
     <LinearLayout
         android:id="@+id/layout_state_preview"
-        android:layout_width="310dp"
+        android:layout_width="330dp"
         android:layout_height="wrap_content"
         android:background="@drawable/bg_bubble_card"
         android:orientation="vertical"
@@ -157,65 +157,74 @@
             <TextView
                 android:id="@+id/tab_tone_casual"
                 android:layout_width="0dp"
-                android:layout_height="32dp"
+                android:layout_height="34dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_tone_unselected"
                 android:gravity="center"
                 android:text="😊 Casual"
                 android:textColor="@color/text_secondary"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
 
             <!-- Semi Formal Tab -->
             <TextView
                 android:id="@+id/tab_tone_semi_formal"
                 android:layout_width="0dp"
-                android:layout_height="32dp"
+                android:layout_height="34dp"
                 android:layout_marginStart="6dp"
                 android:layout_weight="1.2"
                 android:background="@drawable/bg_tone_selected"
                 android:gravity="center"
                 android:text="🙂 Semi formal"
                 android:textColor="@color/white"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
 
             <!-- Formal Tab -->
             <TextView
                 android:id="@+id/tab_tone_formal"
                 android:layout_width="0dp"
-                android:layout_height="32dp"
+                android:layout_height="34dp"
                 android:layout_marginStart="6dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_tone_unselected"
                 android:gravity="center"
                 android:text="👓 Formal"
                 android:textColor="@color/text_secondary"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
 
             <!-- Close Dialog Button -->
             <ImageView
                 android:id="@+id/btn_dismiss_preview"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:layout_marginStart="6dp"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:layout_marginStart="8dp"
                 android:padding="4dp"
                 android:src="@drawable/ic_close"
                 app:tint="@color/text_muted" />
         </LinearLayout>
 
-        <!-- Polished Text Display Area -->
-        <TextView
-            android:id="@+id/tv_preview_text"
+        <!-- Polished Text Display Area: Prominent & Scrollable -->
+        <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:layout_marginBottom="12dp"
-            android:lineSpacingExtra="3dp"
-            android:text="Your polished English will appear here..."
-            android:textColor="@color/white"
-            android:textSize="14sp" />
+            android:background="@drawable/bg_preview_box"
+            android:minHeight="68dp"
+            android:padding="12dp">
+
+            <TextView
+                android:id="@+id/tv_preview_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="4dp"
+                android:text="Your polished English will appear here..."
+                android:textColor="@color/white"
+                android:textIsSelectable="true"
+                android:textSize="15sp" />
+        </androidx.core.widget.NestedScrollView>
 
         <!-- Bottom Action Row -->
         <LinearLayout

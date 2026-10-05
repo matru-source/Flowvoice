@@ -32,6 +32,7 @@ class GroqClient(private val apiKey: String) {
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("model", "whisper-large-v3")
                 .addFormDataPart("file", audioFile.name, fileBody)
+                .addFormDataPart("temperature", "0.0")
                 .addFormDataPart(
                     "prompt",
                     "Odia, Sambalpuri, Hindi, Hinglish, Tamil, Telugu, Malayalam, Kannada, code-switching conversational Indian English, Odia-English phrases (e.g. Dekha kohila, Edit kori rokhitha, Kan hauchi, Ketebele asibu)"
@@ -53,7 +54,23 @@ class GroqClient(private val apiKey: String) {
             }
 
             val json = JSONObject(bodyString)
-            val transcript = json.optString("text", "")
+            val transcript = json.optString("text", "").trim()
+
+            // Filter out Whisper silence hallucinations
+            val lower = transcript.lowercase()
+            if (lower.contains("amara.org") ||
+                lower.contains("subtitles by") ||
+                lower.contains("thank you for watching") ||
+                lower.contains("translated by") ||
+                lower.contains("sous-titres") ||
+                lower.contains("untertitel") ||
+                transcript.length < 2
+            ) {
+                return@withContext Result.failure(
+                    Exception("No clear speech heard. Please speak closer to the mic.")
+                )
+            }
+
             Result.success(transcript)
         } catch (e: Exception) {
             Log.e(TAG, "Groq ASR network error", e)
@@ -64,24 +81,45 @@ class GroqClient(private val apiKey: String) {
     suspend fun polishAllTones(rawTranscript: String): Result<ToneVariants> = withContext(Dispatchers.IO) {
         try {
             val systemPrompt = """
-                You are an expert voice-to-English communication assistant like Superflow.
-                The user speaks thoughts in Odia (ଓଡ଼ିଆ), Hindi, Tamil, Telugu, Kannada, Malayalam, or mixed code-switching (e.g. Odia-English like "Dekha kohila", "Edit kori rokhitha", "Ketebele asibu", or Hinglish) with colloquialisms and filler words.
+                You are an expert AI voice-to-English communication polish engine like Superflow.
+                The user speaks in Odia (ଓଡ଼ିଆ), Sambalpuri, Hindi, Hinglish, Tamil, Telugu, Kannada, Malayalam, or conversational code-mixed Indian English (e.g., "Dekha kohila kan asiba", "Edit kori rokhitha", "Bhai client ko bol do kal tak report bhej denge").
                 
                 YOUR TASK:
-                Translate and refine the user's speech into THREE different English tones:
-                1. "casual": Friendly, colloquial, relaxed messaging tone (for WhatsApp/DMs, emojis allowed if natural).
-                2. "semi_formal": Natural, polite, fluent everyday English (good for friends and colleagues).
-                3. "formal": Professional, executive business tone (for emails, Slack, clients, managers).
+                Convert and polish the user's spoken thoughts into THREE DISTINCT, FLUENT ENGLISH TONES:
                 
-                RULES:
-                - Accurately understand Odia words, phrases, and code-mixing into natural English.
-                - Remove filler words (matlab, yaani, like, you know, um, toh, mane).
-                - Fix grammar, tense, and awkward Indian language literal translations.
-                - Return ONLY a JSON object with exactly these 3 keys:
+                1. "casual":
+                   - Conversational, warm, relaxed messaging style.
+                   - Perfect for WhatsApp chats, close friends, or informal DMs.
+                   - Use friendly phrasing or a natural emoji if suitable.
+                   
+                2. "semi_formal":
+                   - Clear, polite, standard natural English.
+                   - Perfect for colleagues, everyday work chats, and acquaintances.
+                   
+                3. "formal":
+                   - Sophisticated, professional, executive business English.
+                   - Perfect for client communications, corporate emails, Slack, and managers.
+                
+                CRITICAL INSTRUCTIONS:
+                - Accurately translate Odia, Hindi, and regional Indian language phrases into natural English.
+                - Eliminate speech disfluencies, fillers (matlab, yaani, like, you know, um, toh, mane), and awkward literal Indian English phrasing.
+                - Make sure all 3 tones are NOTICEABLY DIFFERENT in vocabulary and formality.
+                - Return ONLY a valid JSON object with keys: "casual", "semi_formal", "formal".
+                
+                Example 1:
+                User: "Kal tak report bhej dunga tension mat lo"
                 {
-                  "casual": "...",
-                  "semi_formal": "...",
-                  "formal": "..."
+                  "casual": "Don't stress, I'll send over the report by tomorrow! 👍",
+                  "semi_formal": "I will send across the report by tomorrow, no worries.",
+                  "formal": "Please be assured that I will submit the report by tomorrow."
+                }
+                
+                Example 2:
+                User: "Dekha kohila kan heba"
+                {
+                  "casual": "Hey, tell me what happened! 🤔",
+                  "semi_formal": "Please let me know how it went.",
+                  "formal": "Kindly advise on the current outcome or status."
                 }
             """.trimIndent()
 
@@ -93,7 +131,7 @@ class GroqClient(private val apiKey: String) {
             val payload = JSONObject().apply {
                 put("model", "llama-3.3-70b-versatile")
                 put("messages", messages)
-                put("temperature", 0.3)
+                put("temperature", 0.4)
                 put("response_format", JSONObject().put("type", "json_object"))
                 put("max_tokens", 800)
             }
@@ -123,10 +161,10 @@ class GroqClient(private val apiKey: String) {
                     .getString("content")
                     .trim()
 
-                val parsed = JSONObject(content)
-                val casual = parsed.optString("casual", rawTranscript)
-                val semiFormal = parsed.optString("semi_formal", casual)
-                val formal = parsed.optString("formal", semiFormal)
+                val parsed = extractJsonObject(content)
+                val casual = parsed.optString("casual", "").ifBlank { rawTranscript }
+                val semiFormal = parsed.optString("semi_formal", "").ifBlank { casual }
+                val formal = parsed.optString("formal", "").ifBlank { semiFormal }
 
                 Result.success(ToneVariants(casual = casual, semiFormal = semiFormal, formal = formal))
             } else {
@@ -136,6 +174,17 @@ class GroqClient(private val apiKey: String) {
             Log.e(TAG, "Groq LLM network error", e)
             Result.failure(e)
         }
+    }
+
+    private fun extractJsonObject(text: String): JSONObject {
+        val clean = text.trim()
+        val firstBrace = clean.indexOf('{')
+        val lastBrace = clean.lastIndexOf('}')
+        if (firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace) {
+            val jsonSubstring = clean.substring(firstBrace, lastBrace + 1)
+            return JSONObject(jsonSubstring)
+        }
+        return JSONObject(clean)
     }
 
     suspend fun polishEnglish(rawTranscript: String, tone: String): Result<String> = withContext(Dispatchers.IO) {

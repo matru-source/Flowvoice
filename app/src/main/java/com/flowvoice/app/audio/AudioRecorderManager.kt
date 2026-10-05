@@ -27,52 +27,59 @@ class AudioRecorderManager(private val context: Context) {
         val file = File(audioDir, "dictation_${System.currentTimeMillis()}.m4a")
         currentOutputFile = file
 
-        mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        try {
+            // First attempt: VOICE_RECOGNITION source (hardware noise suppression + AGC)
+            mediaRecorder = try {
+                createRecorder(file, MediaRecorder.AudioSource.VOICE_RECOGNITION)
+            } catch (e: Exception) {
+                Log.w(TAG, "VOICE_RECOGNITION source failed to prepare, falling back to MIC", e)
+                createRecorder(file, MediaRecorder.AudioSource.MIC)
+            }
+
+            mediaRecorder?.start()
+            isRecording = true
+            Log.d(TAG, "Recording started -> ${file.absolutePath}")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Microphone permission not granted", e)
+            releaseRecorder()
+            return null
+        } catch (e: Exception) {
+            Log.e(TAG, "MediaRecorder start failed", e)
+            releaseRecorder()
+            return null
+        }
+
+        return currentOutputFile
+    }
+
+    private fun createRecorder(file: File, audioSource: Int): MediaRecorder {
+        return (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             MediaRecorder(context)
         } else {
             @Suppress("DEPRECATION")
             MediaRecorder()
-        }.apply {
-            setAudioSource(MediaRecorder.AudioSource.MIC)
+        }).apply {
+            setAudioSource(audioSource)
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            setAudioEncodingBitRate(128000)
-            setAudioSamplingRate(44100)
+            setAudioChannels(1)
+            setAudioSamplingRate(16000)
+            setAudioEncodingBitRate(64000)
             setOutputFile(file.absolutePath)
-
-            try {
-                prepare()
-                start()
-                isRecording = true
-                Log.d(TAG, "Recording started -> ${file.absolutePath}")
-            } catch (e: IOException) {
-                Log.e(TAG, "MediaRecorder prepare failed", e)
-                release()
-                mediaRecorder = null
-                isRecording = false
-                return null
-            } catch (e: IllegalStateException) {
-                Log.e(TAG, "MediaRecorder start failed", e)
-                release()
-                mediaRecorder = null
-                isRecording = false
-                return null
-            } catch (e: SecurityException) {
-                Log.e(TAG, "Microphone permission not granted", e)
-                release()
-                mediaRecorder = null
-                isRecording = false
-                return null
-            } catch (e: Exception) {
-                Log.e(TAG, "MediaRecorder unexpected failure", e)
-                release()
-                mediaRecorder = null
-                isRecording = false
-                return null
-            }
+            prepare()
         }
+    }
 
-        return currentOutputFile
+    private fun releaseRecorder() {
+        try {
+            mediaRecorder?.reset()
+            mediaRecorder?.release()
+        } catch (e: Exception) {
+            // Ignore
+        } finally {
+            mediaRecorder = null
+            isRecording = false
+        }
     }
 
     fun stopRecording(): File? {

@@ -328,8 +328,8 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
         // Reposition preview card cleanly so it centers comfortably on screen
         layoutParams?.let { params ->
             val metrics = appContext.resources.displayMetrics
-            val cardWidthPx = (310 * metrics.density).toInt()
-            val centeredX = ((metrics.widthPixels - cardWidthPx) / 2).coerceAtLeast(20)
+            val cardWidthPx = (330 * metrics.density).toInt()
+            val centeredX = ((metrics.widthPixels - cardWidthPx) / 2).coerceAtLeast(16)
             params.x = centeredX
             try {
                 windowManager.updateViewLayout(bubbleView, params)
