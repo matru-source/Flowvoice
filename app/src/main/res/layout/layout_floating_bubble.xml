@@ -44,7 +44,7 @@
             android:layout_width="20dp"
             android:layout_height="20dp"
             android:layout_marginStart="8dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@color/transparent"
             android:padding="3dp"
             android:src="@drawable/ic_close"
             app:tint="@color/text_muted" />

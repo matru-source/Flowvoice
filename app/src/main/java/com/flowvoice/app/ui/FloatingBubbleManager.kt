@@ -91,42 +91,43 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
             }
         }
 
-        val inflater = LayoutInflater.from(appContext)
-        bubbleView = inflater.inflate(R.layout.layout_floating_bubble, null)
-
-        initViews(bubbleView!!)
-        setupIdleDragListener()
-
-        val metrics = DisplayMetrics()
-        windowManager.defaultDisplay.getMetrics(metrics)
-
-        // Position bubble reliably on the right edge, center height
-        val startX = (metrics.widthPixels - 260).coerceAtLeast(60)
-        val startY = (metrics.heightPixels / 2).coerceAtLeast(150)
-
-        layoutParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = startX
-            y = startY
-        }
-
         try {
+            val themedContext = androidx.appcompat.view.ContextThemeWrapper(appContext, R.style.Theme_FlowVoice)
+            val inflater = LayoutInflater.from(themedContext)
+            bubbleView = inflater.inflate(R.layout.layout_floating_bubble, null)
+
+            initViews(bubbleView!!)
+            setupIdleDragListener()
+
+            val metrics = DisplayMetrics()
+            windowManager.defaultDisplay.getMetrics(metrics)
+
+            // Position bubble reliably on the right edge, center height
+            val startX = (metrics.widthPixels - 260).coerceAtLeast(60)
+            val startY = (metrics.heightPixels / 2).coerceAtLeast(150)
+
+            layoutParams = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                else
+                    @Suppress("DEPRECATION")
+                    WindowManager.LayoutParams.TYPE_PHONE,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+                x = startX
+                y = startY
+            }
+
             windowManager.addView(bubbleView, layoutParams)
             isBubbleAttached = true
             setIdleState()
             Log.d(TAG, "Floating bubble added cleanly to WindowManager at ($startX, $startY)")
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Failed to add floating bubble to WindowManager", e)
         }
     }

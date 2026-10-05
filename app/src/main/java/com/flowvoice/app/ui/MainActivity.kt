@@ -54,6 +54,10 @@ class MainActivity : AppCompatActivity() {
             PermissionUtils.openAccessibilitySettings(this)
         }
 
+        binding.btnUnlockRestricted.setOnClickListener {
+            PermissionUtils.openAppDetails(this)
+        }
+
         binding.btnPermMic.setOnClickListener {
             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }

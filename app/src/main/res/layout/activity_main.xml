@@ -162,6 +162,43 @@
                     android:layout_height="36dp"
                     android:text="@string/status_action_grant"
                     android:textSize="12sp" />
+            <!-- Restricted Permission Helper Banner -->
+            <LinearLayout
+                android:id="@+id/card_restricted_help"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_badge_warning"
+                android:orientation="vertical"
+                android:padding="10dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="⚠️ If Android says 'Restricted setting / Access denied':"
+                    android:textColor="@color/warning_amber"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="1. Tap button below ➔ 2. Tap 3 dots (⋮) in top-right ➔ 3. Tap 'Allow restricted settings'"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/btn_unlock_restricted"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:layout_marginTop="6dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:text="Unlock Restricted Settings"
+                    android:textColor="@color/warning_amber"
+                    android:textSize="11sp" />
             </LinearLayout>
 
             <View

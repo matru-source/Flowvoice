@@ -62,6 +62,20 @@ object PermissionUtils {
         context.startActivity(intent)
     }
 
+    fun openAppDetails(context: Context) {
+        try {
+            val intent = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:${context.packageName}")
+            ).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            openAccessibilitySettings(context)
+        }
+    }
+
     fun isRecordAudioGranted(context: Context): Boolean {
         return ContextCompat.checkSelfPermission(
             context,
