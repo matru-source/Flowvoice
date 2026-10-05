@@ -49,8 +49,8 @@ class FlowAccessibilityService : AccessibilityService() {
         when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_FOCUSED,
             AccessibilityEvent.TYPE_VIEW_CLICKED -> {
-                val source = event.source ?: return
-                if (isEditableField(source)) {
+                val source = event.source
+                if (source != null && isEditableField(source)) {
                     currentFocusedNode = source
                     Log.d(TAG, "Focused editable field: ${source.className} in pkg: ${event.packageName}")
 
@@ -60,6 +60,14 @@ class FlowAccessibilityService : AccessibilityService() {
                             injectTextIntoFocusedField(textToInsert)
                         }
                         bubble.showBubble()
+                    }
+                } else {
+                    val activeNode = findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                    if (activeNode != null && isEditableField(activeNode)) {
+                        currentFocusedNode = activeNode
+                        if (canDrawOverlays()) {
+                            FloatingBubbleManager.getInstance(this).showBubble()
+                        }
                     }
                 }
             }
@@ -76,11 +84,23 @@ class FlowAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun isEditableField(node: AccessibilityNodeInfo): Boolean {
+    private fun isEditableField(node: AccessibilityNodeInfo?): Boolean {
+        if (node == null) return false
         if (node.isEditable) return true
         val className = node.className?.toString().orEmpty()
-        return className.contains("EditText", ignoreCase = true) ||
-                className.contains("TextInput", ignoreCase = true)
+        if (className.contains("EditText", ignoreCase = true) ||
+            className.contains("TextInput", ignoreCase = true)
+        ) {
+            return true
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i)
+            if (child != null && (child.isEditable || child.className?.toString()?.contains("EditText", true) == true)) {
+                return true
+            }
+        }
+        return false
     }
 
     fun triggerBubbleManually() {

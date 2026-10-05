@@ -79,21 +79,30 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
             this.onTextReadyListener = callback
         }
 
-        // If view already attached, ensure visible and reset to idle
-        if (isBubbleAttached && bubbleView != null) {
-            bubbleView?.visibility = View.VISIBLE
-            setIdleState()
-            return
+        // Clean up any stale view before re-attaching fresh
+        if (bubbleView != null) {
+            try {
+                windowManager.removeView(bubbleView)
+            } catch (e: Exception) {
+                Log.w(TAG, "Cleanup old view before show", e)
+            } finally {
+                bubbleView = null
+                isBubbleAttached = false
+            }
         }
 
         val inflater = LayoutInflater.from(appContext)
         bubbleView = inflater.inflate(R.layout.layout_floating_bubble, null)
 
         initViews(bubbleView!!)
-        setupDragTouchListener(bubbleView!!)
+        setupIdleDragListener()
 
         val metrics = DisplayMetrics()
         windowManager.defaultDisplay.getMetrics(metrics)
+
+        // Position bubble reliably on the right edge, center height
+        val startX = (metrics.widthPixels - 260).coerceAtLeast(60)
+        val startY = (metrics.heightPixels / 2).coerceAtLeast(150)
 
         layoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -108,29 +117,23 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = metrics.widthPixels - 240
-            y = metrics.heightPixels / 2
+            x = startX
+            y = startY
         }
 
         try {
             windowManager.addView(bubbleView, layoutParams)
             isBubbleAttached = true
             setIdleState()
-            Log.d(TAG, "Floating bubble added to WindowManager (singleton enforced)")
+            Log.d(TAG, "Floating bubble added cleanly to WindowManager at ($startX, $startY)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to add floating bubble to WindowManager", e)
         }
     }
 
-    fun hideBubble() {
-        if (isBubbleAttached && bubbleView != null) {
-            bubbleView?.visibility = View.GONE
-        }
-    }
-
     @Synchronized
-    fun removeBubble() {
-        if (isBubbleAttached && bubbleView != null) {
+    fun hideBubble() {
+        if (bubbleView != null) {
             try {
                 autoStopHandler.removeCallbacksAndMessages(null)
                 if (audioRecorder.isRecording) {
@@ -138,12 +141,17 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
                 }
                 windowManager.removeView(bubbleView)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to remove bubble view", e)
+                Log.w(TAG, "hideBubble error", e)
             } finally {
-                isBubbleAttached = false
                 bubbleView = null
+                isBubbleAttached = false
             }
         }
+    }
+
+    @Synchronized
+    fun removeBubble() {
+        hideBubble()
     }
 
     private fun initViews(root: View) {
@@ -158,23 +166,20 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
         tabFormal = root.findViewById(R.id.tab_tone_formal)
         tvPreviewText = root.findViewById(R.id.tv_preview_text)
 
-        // RECORDING STATE:
-        // 1. Tapping mic indicator icon ALSO stops recording!
+        // RECORDING STATE ACTIONS:
         root.findViewById<ImageView>(R.id.img_recording_indicator)?.setOnClickListener {
             stopVoiceCapture()
         }
 
-        // 2. Stop square button
         root.findViewById<ImageView>(R.id.btn_stop_recording)?.setOnClickListener {
             stopVoiceCapture()
         }
 
-        // 3. Cancel / close recording
         root.findViewById<ImageView>(R.id.btn_cancel_recording)?.setOnClickListener {
             cancelVoiceCapture()
         }
 
-        // PREVIEW / TONE SELECTION ACTIONS (Image 4):
+        // PREVIEW ACTIONS:
         tabCasual?.setOnClickListener {
             selectTone(ToneMode.CASUAL)
         }
@@ -344,12 +349,12 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
     }
 
     /**
-     * Touch & Drag handling:
-     * Differentiates drag vs tap reliably without letting child click listeners block dragging!
+     * Touch & Drag handling ONLY on layoutIdle:
+     * Prevents any touch event conflicts with recording or tone selection cards!
      */
     @SuppressLint("ClickableViewAccessibility")
-    private fun setupDragTouchListener(view: View) {
-        view.setOnTouchListener(object : View.OnTouchListener {
+    private fun setupIdleDragListener() {
+        layoutIdle?.setOnTouchListener(object : View.OnTouchListener {
             private var initialX = 0
             private var initialY = 0
             private var initialTouchX = 0f
@@ -398,7 +403,12 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
                         // It's a TAP!
                         val duration = System.currentTimeMillis() - touchDownTime
                         if (duration < 500) {
-                            handleTap(event.rawX, event.rawY)
+                            val closeBtn = bubbleView?.findViewById<View>(R.id.btn_close_idle)
+                            if (closeBtn != null && isPointInside(event.rawX, event.rawY, closeBtn)) {
+                                hideBubble()
+                            } else {
+                                startVoiceCapture()
+                            }
                         }
                         return true
                     }
@@ -406,18 +416,6 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
                 return false
             }
         })
-    }
-
-    private fun handleTap(rawX: Float, rawY: Float) {
-        // If in idle state:
-        if (layoutIdle?.visibility == View.VISIBLE) {
-            val closeBtn = bubbleView?.findViewById<View>(R.id.btn_close_idle)
-            if (closeBtn != null && isPointInside(rawX, rawY, closeBtn)) {
-                hideBubble()
-                return
-            }
-            startVoiceCapture()
-        }
     }
 
     private fun isPointInside(rawX: Float, rawY: Float, view: View): Boolean {
