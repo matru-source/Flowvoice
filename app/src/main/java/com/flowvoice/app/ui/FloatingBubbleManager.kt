@@ -79,16 +79,13 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
             this.onTextReadyListener = callback
         }
 
-        // Clean up any stale view before re-attaching fresh
-        if (bubbleView != null) {
-            try {
-                windowManager.removeView(bubbleView)
-            } catch (e: Exception) {
-                Log.w(TAG, "Cleanup old view before show", e)
-            } finally {
-                bubbleView = null
-                isBubbleAttached = false
+        // GUARD 1: If bubble is ALREADY attached and displaying, DO NOT destroy and re-add it!
+        // Re-adding the overlay on every focus/click event is what causes rapid flickering.
+        if (isBubbleAttached && bubbleView != null) {
+            if (bubbleView?.visibility != View.VISIBLE) {
+                bubbleView?.visibility = View.VISIBLE
             }
+            return
         }
 
         try {
@@ -114,8 +111,7 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
                 else
                     @Suppress("DEPRECATION")
                     WindowManager.LayoutParams.TYPE_PHONE,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                 PixelFormat.TRANSLUCENT
             ).apply {
                 gravity = Gravity.TOP or Gravity.START
@@ -198,6 +194,7 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
             val textToInsert = getActiveToneText()
             onTextReadyListener?.invoke(textToInsert)
             vibratePhone(40)
+            Toast.makeText(appContext, "Polished English text inserted!", Toast.LENGTH_SHORT).show()
             setIdleState()
         }
 
@@ -328,6 +325,19 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
         updateToneTabStyles()
         tvPreviewText?.text = getActiveToneText()
 
+        // Reposition preview card cleanly so it centers comfortably on screen
+        layoutParams?.let { params ->
+            val metrics = appContext.resources.displayMetrics
+            val cardWidthPx = (310 * metrics.density).toInt()
+            val centeredX = ((metrics.widthPixels - cardWidthPx) / 2).coerceAtLeast(20)
+            params.x = centeredX
+            try {
+                windowManager.updateViewLayout(bubbleView, params)
+            } catch (e: Exception) {
+                Log.w(TAG, "Update preview layout position error", e)
+            }
+        }
+
         layoutIdle?.visibility = View.GONE
         layoutRecording?.visibility = View.GONE
         layoutProcessing?.visibility = View.GONE
@@ -355,6 +365,8 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
      */
     @SuppressLint("ClickableViewAccessibility")
     private fun setupIdleDragListener() {
+        val touchSlop = android.view.ViewConfiguration.get(appContext).scaledTouchSlop.coerceAtLeast(24)
+
         layoutIdle?.setOnTouchListener(object : View.OnTouchListener {
             private var initialX = 0
             private var initialY = 0
@@ -381,7 +393,7 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
                         val deltaX = (event.rawX - initialTouchX).toInt()
                         val deltaY = (event.rawY - initialTouchY).toInt()
 
-                        if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
+                        if (Math.hypot(deltaX.toDouble(), deltaY.toDouble()) > touchSlop) {
                             isDragging = true
                             params.x = initialX + deltaX
                             params.y = initialY + deltaY
@@ -405,7 +417,13 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
                         val duration = System.currentTimeMillis() - touchDownTime
                         if (duration < 500) {
                             val closeBtn = bubbleView?.findViewById<View>(R.id.btn_close_idle)
-                            if (closeBtn != null && isPointInside(event.rawX, event.rawY, closeBtn)) {
+                            val isCloseTapped = closeBtn != null &&
+                                    event.x >= (closeBtn.left - 12) &&
+                                    event.x <= (closeBtn.right + 12) &&
+                                    event.y >= (closeBtn.top - 12) &&
+                                    event.y <= (closeBtn.bottom + 12)
+
+                            if (isCloseTapped) {
                                 hideBubble()
                             } else {
                                 startVoiceCapture()
@@ -417,14 +435,6 @@ class FloatingBubbleManager private constructor(private val appContext: Context)
                 return false
             }
         })
-    }
-
-    private fun isPointInside(rawX: Float, rawY: Float, view: View): Boolean {
-        val location = IntArray(2)
-        view.getLocationOnScreen(location)
-        val x = location[0]
-        val y = location[1]
-        return rawX >= x && rawX <= x + view.width && rawY >= y && rawY <= y + view.height
     }
 
     companion object {

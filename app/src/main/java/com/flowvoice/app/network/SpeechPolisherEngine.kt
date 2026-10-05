@@ -34,7 +34,8 @@ class SpeechPolisherEngine(context: Context) {
                     withContext(Dispatchers.Main) { onStatusUpdate("Transcribing voice...") }
                     val asrResult = client.transcribeAudio(audioFile)
                     if (asrResult.isFailure) {
-                        return@withContext Result.failure(asrResult.exceptionOrNull()!!)
+                        val err = asrResult.exceptionOrNull() ?: Exception("Transcription failed")
+                        return@withContext Result.failure(err)
                     }
 
                     val rawTranscript = asrResult.getOrNull().orEmpty()
@@ -50,7 +51,8 @@ class SpeechPolisherEngine(context: Context) {
                         )
                     }
 
-                    Result.success(tonesResult.getOrNull()!!)
+                    val variants = tonesResult.getOrNull() ?: ToneVariants(rawTranscript, rawTranscript, rawTranscript)
+                    Result.success(variants)
                 }
 
                 PreferencesManager.PROVIDER_SARVAM -> {
@@ -59,7 +61,8 @@ class SpeechPolisherEngine(context: Context) {
                     withContext(Dispatchers.Main) { onStatusUpdate("Transcribing Indic speech...") }
                     val asrResult = client.transcribeAudio(audioFile)
                     if (asrResult.isFailure) {
-                        return@withContext Result.failure(asrResult.exceptionOrNull()!!)
+                        val err = asrResult.exceptionOrNull() ?: Exception("Transcription failed")
+                        return@withContext Result.failure(err)
                     }
 
                     val rawTranscript = asrResult.getOrNull().orEmpty()

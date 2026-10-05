@@ -44,11 +44,11 @@ class FlowAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null) return
+        // Ignore events originating from FlowVoice itself to prevent recursive loops
+        if (event.packageName == packageName) return
 
         when (event.eventType) {
-            AccessibilityEvent.TYPE_VIEW_FOCUSED,
-            AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+            AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
                 val source = event.source
                 if (source != null && isEditableField(source)) {
                     currentFocusedNode = source
@@ -61,13 +61,21 @@ class FlowAccessibilityService : AccessibilityService() {
                         }
                         bubble.showBubble()
                     }
-                } else {
-                    val activeNode = findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-                    if (activeNode != null && isEditableField(activeNode)) {
-                        currentFocusedNode = activeNode
-                        if (canDrawOverlays()) {
-                            FloatingBubbleManager.getInstance(this).showBubble()
+                }
+            }
+
+            AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+                val source = event.source
+                if (source != null && isEditableField(source)) {
+                    currentFocusedNode = source
+                    Log.d(TAG, "Clicked editable field: ${source.className} in pkg: ${event.packageName}")
+
+                    if (canDrawOverlays()) {
+                        val bubble = FloatingBubbleManager.getInstance(this)
+                        bubble.onTextReadyListener = { textToInsert ->
+                            injectTextIntoFocusedField(textToInsert)
                         }
+                        bubble.showBubble()
                     }
                 }
             }
@@ -77,7 +85,11 @@ class FlowAccessibilityService : AccessibilityService() {
                 if (activeNode != null && isEditableField(activeNode)) {
                     currentFocusedNode = activeNode
                     if (canDrawOverlays()) {
-                        FloatingBubbleManager.getInstance(this).showBubble()
+                        val bubble = FloatingBubbleManager.getInstance(this)
+                        bubble.onTextReadyListener = { textToInsert ->
+                            injectTextIntoFocusedField(textToInsert)
+                        }
+                        bubble.showBubble()
                     }
                 }
             }

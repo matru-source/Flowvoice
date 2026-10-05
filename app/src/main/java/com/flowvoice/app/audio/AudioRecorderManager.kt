@@ -57,6 +57,18 @@ class AudioRecorderManager(private val context: Context) {
                 mediaRecorder = null
                 isRecording = false
                 return null
+            } catch (e: SecurityException) {
+                Log.e(TAG, "Microphone permission not granted", e)
+                release()
+                mediaRecorder = null
+                isRecording = false
+                return null
+            } catch (e: Exception) {
+                Log.e(TAG, "MediaRecorder unexpected failure", e)
+                release()
+                mediaRecorder = null
+                isRecording = false
+                return null
             }
         }
 
