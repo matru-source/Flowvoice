@@ -15,7 +15,6 @@ import com.flowvoice.app.ui.FloatingBubbleManager
 
 class FlowAccessibilityService : AccessibilityService() {
 
-    private var bubbleManager: FloatingBubbleManager? = null
     private var currentFocusedNode: AccessibilityNodeInfo? = null
 
     override fun onServiceConnected() {
@@ -33,16 +32,15 @@ class FlowAccessibilityService : AccessibilityService() {
         }
         serviceInfo = config
 
-        initBubbleManager()
-        Log.d(TAG, "FlowAccessibilityService connected successfully")
-    }
-
-    private fun initBubbleManager() {
+        // Connect global singleton bubble listener
         if (canDrawOverlays()) {
-            bubbleManager = FloatingBubbleManager(this) { textToInsert ->
+            val bubble = FloatingBubbleManager.getInstance(this)
+            bubble.onTextReadyListener = { textToInsert ->
                 injectTextIntoFocusedField(textToInsert)
             }
         }
+
+        Log.d(TAG, "FlowAccessibilityService connected successfully")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -56,19 +54,23 @@ class FlowAccessibilityService : AccessibilityService() {
                     currentFocusedNode = source
                     Log.d(TAG, "Focused editable field: ${source.className} in pkg: ${event.packageName}")
 
-                    if (bubbleManager == null && canDrawOverlays()) {
-                        initBubbleManager()
+                    if (canDrawOverlays()) {
+                        val bubble = FloatingBubbleManager.getInstance(this)
+                        bubble.onTextReadyListener = { textToInsert ->
+                            injectTextIntoFocusedField(textToInsert)
+                        }
+                        bubble.showBubble()
                     }
-                    bubbleManager?.showBubble()
                 }
             }
 
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                // If the user navigates away or closes the keyboard, update active node if available
                 val activeNode = findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
                 if (activeNode != null && isEditableField(activeNode)) {
                     currentFocusedNode = activeNode
-                    bubbleManager?.showBubble()
+                    if (canDrawOverlays()) {
+                        FloatingBubbleManager.getInstance(this).showBubble()
+                    }
                 }
             }
         }
@@ -82,10 +84,13 @@ class FlowAccessibilityService : AccessibilityService() {
     }
 
     fun triggerBubbleManually() {
-        if (bubbleManager == null && canDrawOverlays()) {
-            initBubbleManager()
+        if (canDrawOverlays()) {
+            val bubble = FloatingBubbleManager.getInstance(this)
+            bubble.onTextReadyListener = { textToInsert ->
+                injectTextIntoFocusedField(textToInsert)
+            }
+            bubble.showBubble()
         }
-        bubbleManager?.showBubble()
     }
 
     /**
@@ -151,8 +156,7 @@ class FlowAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        bubbleManager?.removeBubble()
-        bubbleManager = null
+        FloatingBubbleManager.getInstance(this).removeBubble()
         instance = null
         Log.d(TAG, "FlowAccessibilityService destroyed")
     }

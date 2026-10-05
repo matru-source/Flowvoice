@@ -38,6 +38,15 @@
             android:textColor="@color/text_primary"
             android:textSize="13sp"
             android:textStyle="bold" />
+
+        <ImageView
+            android:id="@+id/btn_close_idle"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_marginStart="8dp"
+            android:padding="4dp"
+            android:src="@drawable/ic_close"
+            app:tint="@color/text_muted" />
     </LinearLayout>
 
     <!-- 2. RECORDING STATE: Expanded red pill with pulsing indicator and stop button -->

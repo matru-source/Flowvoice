@@ -4,8 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.util.DisplayMetrics
@@ -30,21 +28,17 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.File
 
-class FloatingBubbleManager(
-    private val context: Context,
-    private val onTextReadyToInsert: (String) -> Unit
-) {
+class FloatingBubbleManager private constructor(private val appContext: Context) {
 
     private val windowManager: WindowManager =
-        context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val vibrator: Vibrator? =
-        context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        appContext.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
 
-    private val prefs = PreferencesManager(context)
-    private val audioRecorder = AudioRecorderManager(context)
-    private val polisherEngine = SpeechPolisherEngine(context)
+    private val prefs = PreferencesManager(appContext)
+    private val audioRecorder = AudioRecorderManager(appContext)
+    private val polisherEngine = SpeechPolisherEngine(appContext)
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
-    private val mainHandler = Handler(Looper.getMainLooper())
 
     private var bubbleView: View? = null
     private var layoutParams: WindowManager.LayoutParams? = null
@@ -61,16 +55,25 @@ class FloatingBubbleManager(
     var isBubbleAttached: Boolean = false
         private set
 
+    var onTextReadyListener: ((String) -> Unit)? = null
+
     private var currentRecordedFile: File? = null
     private var lastPolishedText: String = ""
 
-    fun showBubble() {
-        if (isBubbleAttached) {
+    @Synchronized
+    fun showBubble(callback: ((String) -> Unit)? = null) {
+        if (callback != null) {
+            this.onTextReadyListener = callback
+        }
+
+        // If view already attached, ensure visible and return immediately (NEVER add duplicate!)
+        if (isBubbleAttached && bubbleView != null) {
             bubbleView?.visibility = View.VISIBLE
+            setIdleState()
             return
         }
 
-        val inflater = LayoutInflater.from(context)
+        val inflater = LayoutInflater.from(appContext)
         bubbleView = inflater.inflate(R.layout.layout_floating_bubble, null)
 
         initViews(bubbleView!!)
@@ -100,7 +103,7 @@ class FloatingBubbleManager(
             windowManager.addView(bubbleView, layoutParams)
             isBubbleAttached = true
             setIdleState()
-            Log.d(TAG, "Floating bubble added to WindowManager")
+            Log.d(TAG, "Floating bubble added to WindowManager (singleton enforced)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to add floating bubble to WindowManager", e)
         }
@@ -112,6 +115,7 @@ class FloatingBubbleManager(
         }
     }
 
+    @Synchronized
     fun removeBubble() {
         if (isBubbleAttached && bubbleView != null) {
             try {
@@ -142,6 +146,11 @@ class FloatingBubbleManager(
             startVoiceCapture()
         }
 
+        // Dismiss idle bubble
+        root.findViewById<ImageView>(R.id.btn_close_idle)?.setOnClickListener {
+            hideBubble()
+        }
+
         // Recording state stop button -> finish and process
         root.findViewById<ImageView>(R.id.btn_stop_recording)?.setOnClickListener {
             stopVoiceCapture()
@@ -154,7 +163,7 @@ class FloatingBubbleManager(
 
         // Preview state actions
         root.findViewById<Button>(R.id.btn_insert_text)?.setOnClickListener {
-            onTextReadyToInsert(lastPolishedText)
+            onTextReadyListener?.invoke(lastPolishedText)
             setIdleState()
         }
 
@@ -167,7 +176,7 @@ class FloatingBubbleManager(
         vibratePhone(40)
         currentRecordedFile = audioRecorder.startRecording()
         if (currentRecordedFile == null) {
-            Toast.makeText(context, "Microphone permission needed", Toast.LENGTH_SHORT).show()
+            Toast.makeText(appContext, "Microphone permission needed", Toast.LENGTH_SHORT).show()
             setIdleState()
             return
         }
@@ -181,14 +190,14 @@ class FloatingBubbleManager(
 
         val file = currentRecordedFile
         if (file == null || !file.exists() || file.length() < 1000) {
-            Toast.makeText(context, "Audio too short", Toast.LENGTH_SHORT).show()
+            Toast.makeText(appContext, "Audio too short", Toast.LENGTH_SHORT).show()
             setIdleState()
             return
         }
 
         coroutineScope.launch {
             val result = polisherEngine.processAudio(file) { statusMsg ->
-                // Update live status if needed
+                // Live status update
             }
 
             if (result.isSuccess) {
@@ -196,16 +205,14 @@ class FloatingBubbleManager(
                 vibratePhone(60)
 
                 if (prefs.autoInsert) {
-                    // Superflow default: instantly insert into the active input!
-                    onTextReadyToInsert(lastPolishedText)
+                    onTextReadyListener?.invoke(lastPolishedText)
                     setIdleState()
                 } else {
-                    // Show preview card
                     setPreviewState(lastPolishedText)
                 }
             } else {
                 val error = result.exceptionOrNull()?.message ?: "Processing error"
-                Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                Toast.makeText(appContext, error, Toast.LENGTH_LONG).show()
                 setIdleState()
             }
         }
@@ -312,5 +319,16 @@ class FloatingBubbleManager(
 
     companion object {
         private const val TAG = "FloatingBubbleManager"
+
+        @Volatile
+        private var instance: FloatingBubbleManager? = null
+
+        fun getInstance(context: Context): FloatingBubbleManager {
+            return instance ?: synchronized(this) {
+                instance ?: FloatingBubbleManager(context.applicationContext).also {
+                    instance = it
+                }
+            }
+        }
     }
 }

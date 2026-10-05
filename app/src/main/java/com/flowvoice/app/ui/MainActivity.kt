@@ -71,14 +71,9 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            FlowAccessibilityService.instance?.triggerBubbleManually()
-                ?: run {
-                    // If service not running, start bubble manager directly
-                    val bubbleManager = FloatingBubbleManager(this) { text ->
-                        binding.etTestPlayground.setText(text)
-                    }
-                    bubbleManager.showBubble()
-                }
+            FloatingBubbleManager.getInstance(this).showBubble { text ->
+                binding.etTestPlayground.setText(text)
+            }
 
             Toast.makeText(this, "Floating Bubble activated! Speak in Hindi/Hinglish.", Toast.LENGTH_SHORT).show()
         }
